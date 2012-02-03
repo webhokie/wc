@@ -20,9 +20,8 @@ else:
 	basepath = "."
 
 # from retweet relationship
-# weibo.cn/dpool/ttt/h5/attension.php?cat=1&uid=%s&json=1
-logger = logging.getLogger("getUserFansByCmtCn")
-logFileName = basepath + "/log/weibo/WeiboFansCmtCn." + str(datetime.date.today()) + ".log"
+logger = logging.getLogger("getUserFansByRepost")
+logFileName = basepath + "/log/weibo/WeiboFansRepost." + str(datetime.date.today()) + ".log"
 fileHandler = logging.FileHandler(logFileName)
 formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] : %(message)s")
 fileHandler.setFormatter(formatter)
@@ -30,7 +29,7 @@ logger.addHandler(fileHandler)
 logger.setLevel(logging.INFO)
 
 
-class FansByCmt(threading.Thread):
+class FansByRepost(threading.Thread):
     def __init__(self, crawler, jobs_queue):
         threading.Thread.__init__(self)
         self.crawler = crawler
@@ -41,13 +40,13 @@ class FansByCmt(threading.Thread):
         while True:
             if self.jobs_queue.empty() == True:
                 return
-            mid, page, number = self.jobs_queue.get()
+            uid, page, number = self.jobs_queue.get()
             self.jobs_queue.task_done()
             if number >= 3: # fail number
             	continue
             
             time.sleep(2)
-            url = "http://weibo.cn/dpool/ttt/h5/comment.php?json=1&srcid=%s&page=%s" % (mid, page)
+            url = "http://weibo.cn/dpool/ttt/h5/msg.php?cat=4&json=1&uid=%s&page=%s" % (uid, page)
             referer = "http://weibo.cn/"
             
             print "[-%s]%s" % (number, url)
@@ -57,7 +56,7 @@ class FansByCmt(threading.Thread):
             
             if res is None:
             	number = number + 1
-            	self.jobs_queue.put((mid, page, number))
+            	self.jobs_queue.put((uid, page, number))
             	continue
             
             try:
@@ -67,34 +66,34 @@ class FansByCmt(threading.Thread):
             	logger.info(res)
             	logger.error(e)
             	number = number + 1
-            	self.jobs_queue.put((mid, page, number))
+            	self.jobs_queue.put((uid, page, number))
                 continue
             
             if js['maxPage'] is None or js['json'] is None:
                 continue
             
-            with open("%s/data/comments/%s.cmt" % (basepath, datetime.date.today()), "a") as commentf:
-            	commentf.write("%s\n" % res)
+            with open("%s/data/repost/%s.repost" % (basepath, datetime.date.today()), "a") as repostf:
+            	repostf.write("%s\n" % res)
 
 class InitJobQueue(threading.Thread):
-    def __init__(self, crawler, mid_queue, jobs_queue):
+    def __init__(self, crawler, uid_queue, jobs_queue):
         threading.Thread.__init__(self)
         self.crawler = crawler
-        self.mid_queue = mid_queue
+        self.uid_queue = uid_queue
         self.jobs_queue = jobs_queue
 
     def run(self):
         while True:
-            if self.mid_queue.empty() == True:
+            if self.uid_queue.empty() == True:
                 return
             
-            mid, number = self.mid_queue.get()
+            uid, number = self.uid_queue.get()
             if number >=3:
-            	self.mid_queue.task_done()
+            	self.uid_queue.task_done()
                 continue
             
             time.sleep(2)
-            url = "http://weibo.cn/dpool/ttt/h5/comment.php?json=1&srcid=%s&page=1" % mid
+            url = "http://weibo.cn/dpool/ttt/h5/msg.php?cat=4&json=1&uid=%s&page=1" % uid
             referer = "http://weibo.cn"
             print "[%s]%s" % (number, url)
             res = self.crawler.getPage(url, referer)
@@ -102,16 +101,16 @@ class InitJobQueue(threading.Thread):
             
             if res is None:
                 number = number + 1
-                self.mid_queue.put((mid, number))
-            	self.mid_queue.task_done()
+                self.uid_queue.put((uid, number))
+            	self.uid_queue.task_done()
                 continue
             
             try:
                 js = json.loads(res)
             except Exception, e:
                 number = number + 1
-                self.mid_queue.put((mid, number))
-            	self.mid_queue.task_done()
+                self.uid_queue.put((uid, number))
+            	self.uid_queue.task_done()
                 logger.info(url)
                 logger.info(res)
                 logger.error(e)
@@ -126,18 +125,18 @@ class InitJobQueue(threading.Thread):
             maxPage = js['maxPage']
             print "max page:", maxPage
             for i in range(1, maxPage + 1):
-                self.jobs_queue.put((mid, i, 0))
-            self.mid_queue.task_done()
+                self.jobs_queue.put((uid, i, 0))
+            self.uid_queue.task_done()
 
 
 
 
 
 if __name__ == "__main__":
-    mid_queue = Queue.Queue()
+    uid_queue = Queue.Queue()
     jobs_queue = Queue.Queue()
     
-    mid_queue.put(("y3FIBFbE0", 0)) # test
+    uid_queue.put(("1647717847", 0)) # test
     
     crawler = WeiboCrawler()
     accounts = crawler.getAllGsidProxyPair()
@@ -150,17 +149,17 @@ if __name__ == "__main__":
         c = WeiboCrawler()
         c.setGsid(gsid)
         c.setProxy(proxy)
-        ijq = InitJobQueue(c, mid_queue, jobs_queue)
+        ijq = InitJobQueue(c, uid_queue, jobs_queue)
         ijq.setDaemon(True)
         ijq.start()
         account_list.append(c)
         
-	mid_queue.join()
+	uid_queue.join()
 	
     for c in account_list:
-        fbc = FansByCmt(c, jobs_queue)
-        fbc.setDaemon(True)
-        fbc.start()
+        fbr = FansByRepost(c, jobs_queue)
+        fbr.setDaemon(True)
+        fbr.start()
     
     jobs_queue.join()	
     time.sleep(30)

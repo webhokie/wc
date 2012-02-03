@@ -1,1 +1,5 @@
-This is my weibo crawler project
+已经完成的功能：
+1. 抓取一个用户的微博
+2. 抓取一条微博的评论
+3. 修改用户的profile
+4. 根据关键字进行搜索

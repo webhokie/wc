@@ -26,7 +26,7 @@ else:
 
 # logger setting
 logger = logging.getLogger("Search")
-logFileName = "%s/WeiboSearch.%s.log" % (basepath, str(datetime.date.today()))
+logFileName = "%s/log/weibo/WeiboSearch.%s.log" % (basepath, str(datetime.date.today()))
 fileHandler = logging.FileHandler(logFileName)
 formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] : %(message)s")
 fileHandler.setFormatter(formatter)

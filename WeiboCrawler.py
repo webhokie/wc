@@ -10,9 +10,12 @@ import cookielib
 import os
 import re
 import sys
+import mechanize
+import traceback
 
 from BeautifulSoup import BeautifulSoup
 from BaseCrawler import BaseCrawler
+import CodeChecker
 
 basepath = sys.argv[0]
 if basepath.rfind("/") != -1:
@@ -22,13 +25,13 @@ else:
 
 
 # logger
-_logger = logging.getLogger("WeiboCrawler")
+logger = logging.getLogger("WeiboCrawler")
 logFile = "%s/log/weibo/WeiboCrawler.%s.log" % (basepath, str(datetime.date.today()))
 logHandler = logging.FileHandler(logFile)
 logFormatter = logging.Formatter("[%(asctime)s] [%(levelname)s] : %(message)s")
 logHandler.setFormatter(logFormatter)
-_logger.addHandler(logHandler)
-_logger.setLevel(logging.INFO)
+logger.addHandler(logHandler)
+logger.setLevel(logging.INFO)
 
 
 class WeiboCrawler(BaseCrawler):
@@ -313,15 +316,19 @@ class WeiboCrawler(BaseCrawler):
 
 		try:
 			self.br.select_form(nr=0)
+			#print self.br.form
+			self.br.form['content'] = content.strip()
+			_resp = self.br.submit()
+			resp_url =  _resp.geturl()
+			#print _resp.read()
+			if resp_url.find("http://weibo.cn/comments/addcomment") != -1:
+				logger.info(_resp.read())
+				raise Exception("permission denied")
+			return True
 		except Exception, e:
-			print e
-			return
-		print self.br.form
-
-		self.br.form['content'] = content.strip()
-
-		self.br.submit()
-
+			logger.info(url)
+			logger.error(e)
+			return False
 
 	def setNick(self, nick):
 		if nick is None:
@@ -450,15 +457,20 @@ class WeiboCrawler(BaseCrawler):
 		referer = "http://weibo.cn/dpool/ttt/home.php"
 		resp = self.getPage(url, referer)
 		if resp is None:
+			logger.error("%s, %s, %s, response is None" % (self.username, self.password, self.proxy))
 			return
 
 		# select the first form
-		self.br.select_form(nr=0)
-		# print self.br.form
+		try:
+			self.br.select_form(nr=0)
+		except Exception, e:
+			logger.error("%s, %s, %s, %s" % (self.username, self.password, self.proxy, e))
+			return
 
 		# check what fields there might be: cause sina's from has a variable form name of password
 		for control in self.br.form.controls:
-			# print control.name
+			if control.name is None:
+				continue
 			if control.name.find("mobile") != -1:
 				self.br.form[control.name] = self.username
 			if control.name.find("password") != -1:
@@ -471,31 +483,73 @@ class WeiboCrawler(BaseCrawler):
 		resp = _resp.read()
 		print resp
 		if resp is None:
-			return
+			logger.error("%s, %s, %s, response is None" % (self.username, self.password, self.proxy))
+			return 
 		soup = BeautifulSoup(resp)
 		error_msg = soup.find("div", {"class": "msgErr"})
 		if error_msg is None:
-			cookie_file = "%s/accounts/%s.weibo.cookie" % (basepath, self.username)
-			gsid_proxy_file = "%s/accounts/%s.weibo.gp" % (basepath, self.username) # suffix gp means g[gsid] and p[proxy] pair
-			self.cj.save(cookie_file)
-			cookie = [cookie for cookie in self.cj if cookie.domain == ".sina.cn"][0]
-			self.gsid = cookie.value
-			self.is_login = True
-			with open(gsid_proxy_file, "w") as gsid_proxy_pair:
-				gsid_proxy_pair.write("%s\t%s\n" % (self.gsid, self.proxy))
+			try:
+				cookie_file = "%s/accounts/%s.weibo.cookie" % (basepath, self.username)
+				gsid_proxy_file = "%s/accounts/%s.weibo.gp" % (basepath, self.username) # suffix gp means g[gsid] and p[proxy] pair
+				if os.path.isfile(cookie_file):
+					os.remove(cookie_file)
+				self.cj.save(cookie_file)
+				cookie = [cookie for cookie in self.cj if cookie.domain == ".sina.cn"][0]
+				self.gsid = cookie.value
+				self.is_login = True
+				with open(gsid_proxy_file, "w") as gsid_proxy_pair:
+					gsid_proxy_pair.write("%s\t%s\n" % (self.gsid, self.proxy))
+			except Exception, e:
+			  	logger.error("%s, %s, %s, %s" % (self.username, self.password, self.proxy, e))
+				print self.username, self.password, self.proxy, e
+		else:
+			try:
+				msg = error_msg.string
+				if isinstance(msg, unicode):
+					msg = msg.encode("utf-8")
+				if msg == "请输入验证码":
+					img = soup.find("img", {"alt": re.compile(u"请打开图片显示")})	
+					if img is None:
+						return
+					img_url = img['src']
+					print img_url
+					browser =  mechanize.Browser(factory = mechanize.RobustFactory())
+					browser.set_handle_robots(False)
+					browser.addheaders = [("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.7 (KHTML, like Gecko) Chrome/16.0.912.63 Safari/535.7")]
+					browser.set_cookiejar(self.cj)
+					req = mechanize.Request(img_url)
+					response = browser.open(req).read()
+					open("show.gif", "w").write(response)
+					checker = CodeChecker.App("show.gif")
+					print checker.code
+			except Exception, e:
+				traceback.print_exc()
+				print sys.exc_info()
+				print e
+
 
 	def showCurDir(self):
 		print sys.argv[0]
 		
 if __name__ == "__main__":
+#	with open("%s/collection/acct.t" % basepath, "r") as accounts:
+#		for account in accounts:
+#			items = account.strip().split("|")
+#			username = items[0]
+#			password = items[1]
+#			proxy = items[2]
+#			wc = WeiboCrawler()
+#			wc.login(username, password, proxy)
+
+
 	wc = WeiboCrawler()
-#	wc.login("crazy_crawler006@sina.com", "HW427309")
-	gsid_proxy_pairs = wc.getAllGsidProxyPair()
+	wc.login("1183964328@qq.com", "a666666")
+#	gsid_proxy_pairs = wc.getAllGsidProxyPair()
 	#print gsid_proxy_pairs
-	gsid, proxy = gsid_proxy_pairs[4]
+#	gsid, proxy = gsid_proxy_pairs[4]
 	#print gsid
-	wc.setGsid(gsid)
-	print wc.getMicroBlogs("1682352065")
+#	wc.setGsid(gsid)
+#	print wc.getMicroBlogs("1682352065")
 #	wc.setNick("福气鱼")
 #	wc.setNick("福气鱼01101")
 #	wc.setDomain("bestofme")
@@ -510,7 +564,8 @@ if __name__ == "__main__":
 #	wc.sendBlog("send a picture", path="0UI51A3-0-lp.jpg", mime="image/jpeg", name="OUI51A3-0-lp.jpg")
 #	wc.sendBlog("send a picture")
 #	wc.repost("y3sT3xCZP", "悲剧")
-#	wc.comment("y3tsI8Oim", "悲剧")
+#	print wc.comment("y3sT3xCZP", "悲剧")
+#	print wc.comment("y3MAYnnqf", "悲剧")
 #	wc.attention("2571243662")
 #	resp = wc.getFans(2338835395)
 #	resp = wc.getPage("http://weibo.cn/2097199585/follow", referer="http://weibo.cn/u/20978199585")

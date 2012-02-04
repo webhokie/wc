@@ -52,9 +52,9 @@ class BaseCrawler(object):
 			self.logger = logger
 		
 		# account setting
-		self.proxy = None
-		self.username = None
-		self.password = None
+		self.proxy = proxy
+		self.username = username
+		self.password = password
 		self.is_login = False
 
 		# browser

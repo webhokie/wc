@@ -294,13 +294,18 @@ class WeiboCrawler(BaseCrawler):
 		if resp is None:
 			return
 
-		self.br.select_form(nr=0)
-		print self.br.form
+		try:
+			self.br.select_form(nr=0)
+			print self.br.form
 
-		if content is not None:
-			self.br.form['content'] = content.strip()
+			if content is not None:
+				self.br.form['content'] = content.strip()
 
-		self.br.submit()
+			self.br.submit()
+		except Exception, e:
+			logger.info(url)
+			logger.info(resp)
+			logger.error(e)
 
 	def comment(self, mid, content):
 		if mid is None or content is None:
@@ -442,7 +447,7 @@ class WeiboCrawler(BaseCrawler):
 		return data
 		
 
-	def login(self, username=None, password=None, proxy=None):
+	def login(self, username=None, password=None, proxy=None, safe=False):
 		if proxy is not None:
 			super(WeiboCrawler, self).setProxy(proxy)
 
@@ -503,6 +508,8 @@ class WeiboCrawler(BaseCrawler):
 			  	logger.error("%s, %s, %s, %s" % (self.username, self.password, self.proxy, e))
 				print self.username, self.password, self.proxy, e
 		else:
+			if not safe:
+				return
 			try:
 				msg = error_msg.string
 				if isinstance(msg, unicode):
@@ -522,6 +529,12 @@ class WeiboCrawler(BaseCrawler):
 					open("show.gif", "w").write(response)
 					checker = CodeChecker.App("show.gif")
 					print checker.code
+					self.br.select_form(nr=0)
+					self.br.form['code'] = checker.strip()
+					_resp = self.br.submit()
+					print _resp.info()
+					print _resp.geturl()
+					print _resp.read()
 			except Exception, e:
 				traceback.print_exc()
 				print sys.exc_info()
@@ -543,7 +556,7 @@ if __name__ == "__main__":
 
 
 	wc = WeiboCrawler()
-	wc.login("1183964328@qq.com", "a666666")
+	wc.login("1183964328@qq.com", "a666666", safe=True)
 #	gsid_proxy_pairs = wc.getAllGsidProxyPair()
 	#print gsid_proxy_pairs
 #	gsid, proxy = gsid_proxy_pairs[4]

@@ -44,6 +44,25 @@ class CrawlerException(Exception):
 		return repr(self.msg)
 
 class BaseCrawler(object):
+	def createBrowser(self, mode=False):
+		"""
+		mode = True if in debug mode
+		mode = False if in productive mode
+		"""
+		br = mechanize.Browser(factory = mechanize.RobustFactory())
+		br.set_handle_equiv(True)
+		br.set_handle_redirect(True)
+		br.set_handle_referer(True)
+		br.set_handle_robots(False)
+		br.set_handle_refresh(mechanize._http.HTTPRefreshProcessor(), max_time=1)
+		br.set_debug_http(mode)
+		br.set_debug_responses(mode)
+		br.set_debug_redirects(mode)
+		br.addheaders = [("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/535.7 (KHTML, like Gecko) C    hrome/16.0.912.63 Safari/535.7")]
+		cj = cookielib.LWPCookieJar()
+		br.set_cookiejar(cj)
+		return br
+
 	def __init__(self, logger=None, username=None, password=None, proxy=None):
 		# logger setting
 		if logger is None:
